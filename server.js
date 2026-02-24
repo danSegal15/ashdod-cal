@@ -87,16 +87,29 @@ app.get('/', async (req, res) => {
                 });
             } catch (e) {}
         }
+		
+		const { error, value } = ics.createEvents(events);
+        if (error) throw error;
 
-        const { error, value } = ics.createEvents(events);
+        // --- התיקון לאלגנטיות מתחיל כאן ---
+
+        // אנחנו מזריקים לתוך קובץ ה-ICS הגדרות שגוגל ואפל מחפשים
+        const elegantValue = value.replace('VERSION:2.0', 
+            'VERSION:2.0\r\n' +
+            'X-WR-CALNAME:מ.ס. אשדוד - לוח משחקים 🐬\r\n' + // זה השם שיופיע ביומן
+            'X-WR-TIMEZONE:Asia/Jerusalem\r\n' +           // מבטיח שהשעות לא יקפצו
+            'X-WR-CALDESC:לוח משחקים רשמי מסונכרן של מ.ס. אשדוד\r\n' +
+            'REFRESH-INTERVAL;VALUE=DURATION:PT4H\r\n' +   // בקשת רענון כל 4 שעות
+            'X-PUBLISHED-TTL:PT4H'
+        );
+
         res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-        res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"');
-        res.send(value);
+        res.setHeader('Content-Disposition', 'inline; filename="ashdod_calendar.ics"');
+        res.send(elegantValue);
 
     } catch (err) {
         res.status(500).send("Error");
     }
 });
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Live on port ${PORT}`));
