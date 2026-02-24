@@ -19,7 +19,7 @@ const clean = (str) => {
 // מנוע סריקת הרקע - רץ לבד, לאט ובשקט!
 // ==========================================
 const scrapeDataInBackground = async () => {
-    while (true) { // לולאה אינסופית שרצה כל עוד השרת חי
+    while (true) { 
         console.log(`>>> מתחיל סריקת רקע איטית (עונה ${SEASON_ID})...`);
         const events = [];
 
@@ -27,7 +27,7 @@ const scrapeDataInBackground = async () => {
             const url = `https://www.football.org.il//Components.asmx/League_AllTables?league_id=40&season_id=${SEASON_ID}&box=0&round_id=${round}`;
             
             try {
-                // לבקשתך: ממתינים 5 שניות שלמות בין מחזור למחזור! אין סיכוי שניחסם.
+                // ממתינים 5 שניות שלמות בין מחזור למחזור - הדרך הבטוחה לא להיחסם
                 await new Promise(r => setTimeout(r, 5000)); 
                 
                 const response = await axios.get(url, { 
@@ -90,6 +90,45 @@ const scrapeDataInBackground = async () => {
         if (events.length > 0) {
             const { error, value } = ics.createEvents(events);
             if (!error) {
-                // שומרים את היומן המוכן בזיכרון של השרת
-                cachedIcs = value.replace('VERSION:2.0', 
-                    'VERSION:2.0\r\
+                // הפתרון לשגיאת הסינטקס: שימוש במערך (Array)
+                const elegantHeaders = [
+                    'VERSION:2.0',
+                    'X-WR-CALNAME:מ.ס. אשדוד - לוח משחקים 🐬',
+                    'X-WR-TIMEZONE:Asia/Jerusalem',
+                    'X-WR-CALDESC:לוח משחקים רשמי',
+                    'REFRESH-INTERVAL;VALUE=DURATION:PT4H'
+                ].join('\r\n');
+
+                cachedIcs = value.replace('VERSION:2.0', elegantHeaders);
+            }
+        }
+
+        // השרת נח לשעה לפני העדכון הבא
+        await new Promise(r => setTimeout(r, 3600000));
+    }
+};
+
+// הפעלה אוטומטית בעליית השרת
+scrapeDataInBackground();
+
+// ==========================================
+// נתיבי השרת (מהירים במיוחד)
+// ==========================================
+
+app.get('/health', (req, res) => res.status(200).send('OK'));
+
+app.get('/', (req, res) => {
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"');
+    
+    if (cachedIcs) {
+        // היומן מוכן בזיכרון - נשלח מיד!
+        res.send(cachedIcs);
+    } else {
+        // היומן עדיין נסרק בדקות הראשונות אחרי ה-Deploy
+        res.send("BEGIN:VCALENDAR\nVERSION:2.0\nX-WR-CALNAME:מ.ס. אשדוד - הנתונים בטעינה (רענן עוד 3 דק)\nEND:VCALENDAR");
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server live on port ${PORT}`));
