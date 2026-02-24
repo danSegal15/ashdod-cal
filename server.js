@@ -5,25 +5,22 @@ const ics = require('ics');
 
 const app = express();
 const ASHDOD_ID = '1198';
-const SEASON_ID = '27'; // עונה 27 כפי שביקשת
+const SEASON_ID = '27'; 
 
-// פונקציית הניקוי שהורגת את הרווחים השבורים
 const clean = (str) => {
     if (!str) return "";
     return str.replace(/&nbsp;/g, ' ').replace(/\u00a0/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 };
 
-// לוגים למעקב
 app.use((req, res, next) => {
     console.log(`[${new Date().toLocaleTimeString()}] בקשה נכנסה לנתיב: ${req.url}`);
     next();
 });
 
-// פותר את הבעיה של Render
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.get('/', async (req, res) => {
-    console.log(`>>> סורק עונה ${SEASON_ID}...`);
+    console.log(`>>> סורק עונה ${SEASON_ID} (במצב חמקן - קצב איטי)...`);
     const events = [];
 
     try {
@@ -31,15 +28,20 @@ app.get('/', async (req, res) => {
             const url = `https://www.football.org.il//Components.asmx/League_AllTables?league_id=40&season_id=${SEASON_ID}&box=0&round_id=${round}`;
             
             try {
-                await new Promise(r => setTimeout(r, 150)); // השהיה למניעת חסימה מההתאחדות
+                // הגדלנו משמעותית את ההמתנה ל-800 מילי-שניות כדי להיראות כמו גלישה טבעית
+                await new Promise(r => setTimeout(r, 800)); 
                 
                 const response = await axios.get(url, { 
-                    headers: { 'User-Agent': 'Mozilla/5.0' },
-                    timeout: 5000 
+                    headers: { 
+                        // התחזות מלאה לדפדפן כרום אמיתי בווינדוס
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7'
+                    },
+                    timeout: 8000 
                 });
 
                 let htmlData = response.data;
-                // החיתוך המקורי שעבד
                 const xmlMatch = htmlData.match(/<HtmlData>(.*?)<\/HtmlData>/s);
                 if (!xmlMatch) continue;
 
@@ -51,10 +53,9 @@ app.get('/', async (req, res) => {
                     const team1 = row.getAttribute('data-team1');
                     const team2 = row.getAttribute('data-team2');
 
-                    // התנאי המקורי והפשוט שעבד
                     if (team1 === ASHDOD_ID || team2 === ASHDOD_ID) {
                         const cols = row.querySelectorAll('.table_col');
-                        if (cols.length < 5) return; // חזרה לבדיקה המקורית של 5 עמודות
+                        if (cols.length < 5) return; 
 
                         const dateStr = clean(row.querySelector('.game-date')?.innerText || "");
                         if (!dateStr.includes('/')) return;
@@ -86,7 +87,8 @@ app.get('/', async (req, res) => {
                     }
                 });
             } catch (e) {
-                console.log(`שגיאה פנימית במחזור ${round}: ${e.message}`);
+                // מדפיס שגיאה רק אם זו לא שגיאת 404/403 רגילה כדי לא להציף את הלוג
+                console.log(`שגיאה במחזור ${round}: ${e.message}`);
             }
         }
 
@@ -99,7 +101,6 @@ app.get('/', async (req, res) => {
         const { error, value } = ics.createEvents(events);
         if (error) throw error;
 
-        // הוספת המטא-דאטה לשם יומן אלגנטי
         const elegantValue = value.replace('VERSION:2.0', 
             'VERSION:2.0\r\n' +
             'X-WR-CALNAME:מ.ס. אשדוד - לוח משחקים 🐬\r\n' +
