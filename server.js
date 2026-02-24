@@ -6,29 +6,23 @@ const ics = require('ics');
 const app = express();
 const ASHDOD_ID = '1198';
 
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    next();
-});
+// פונקציית עזר לניקוי טקסט מסימני HTML שבורים
+const clean = (str) => {
+    if (!str) return "";
+    return str
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ') // הופך כפל רווחים לרווח אחד
+        .trim();
+};
 
-// --- זה החלק החדש שמונע את העומס ---
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// 1. נתיב בדיקת דופק - Render יפנה לכאן ולא יפעיל את הסקראפינג היקר
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
-
-// 2. הנתיב הראשי של היומן
 app.get('/', async (req, res) => {
     const ua = req.headers['user-agent'] || '';
-    
-    // אם מי שפנה הוא בוט של סריקה, נעצור אותו מיד בלי לבזבז משאבים
-    if (ua.includes('bot') || ua.includes('crawler') || ua.includes('Spider')) {
-        console.log(`Bot blocked: ${ua}`);
-        return res.status(200).send('No bots allowed');
-    }
+    if (ua.includes('bot') || ua.includes('crawler')) return res.status(200).send('No bots');
 
-    console.log(`Request received from: ${ua}`);
+    console.log(`Request from: ${ua}`);
     const events = [];
 
     try {
@@ -37,7 +31,7 @@ app.get('/', async (req, res) => {
             
             try {
                 const response = await axios.get(url, {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                    headers: { 'User-Agent': 'Mozilla/5.0' }
                 });
 
                 let htmlData = response.data;
@@ -58,21 +52,26 @@ app.get('/', async (req, res) => {
                     const cols = row.querySelectorAll('.table_col');
                     if (cols.length < 5) return;
 
-                    const dateStr = row.querySelector('.game-date').innerText.trim();
+                    const dateStr = clean(row.querySelector('.game-date').innerText);
                     const [day, month, year] = dateStr.split('/').map(Number);
 
-                    const timeStr = cols[3].innerText.replace('שעה', '').trim();
+                    const timeStr = clean(cols[3].innerText.replace('שעה', ''));
                     const timeMatch = timeStr.match(/(\d{2}):(\d{2})/);
 
-                    const stadium = cols[2].innerText.replace('מגרש', '').trim();
+                    const stadium = clean(cols[2].innerText.replace('מגרש', ''));
                     const teamNames = cols[1].querySelectorAll('.team-name-text');
-                    const title = teamNames.length === 2 ? `${teamNames[0].innerText.trim()} נגד ${teamNames[1].innerText.trim()}` : "משחק ליגה";
-                    const matchType = (team1 === ASHDOD_ID) ? 'משחק בית' : 'משחק חוץ';
+                    
+                    // ניקוי שמות הקבוצות לפני יצירת הכותרת
+                    const t1Name = clean(teamNames[0]?.innerText || "");
+                    const t2Name = clean(teamNames[1]?.innerText || "");
+                    const title = `${t1Name} נגד ${t2Name}`;
+
+                    const matchType = (team1 === ASHDOD_ID) ? 'בית' : 'חוץ';
                     
                     let event = {
-                        uid: `ashdod-game-round-${round}@msa-cal.com`, 
+                        uid: `ashdod-v2-round-${round}@msa-cal.com`, 
                         title: `🔥 ${title}`,
-                        description: `מחזור ${round} | ${matchType} | ליגת העל`,
+                        description: `מחזור ${round} | משחק ${matchType} | ליגת העל`,
                         location: stadium,
                         status: 'CONFIRMED'
                     };
@@ -86,14 +85,12 @@ app.get('/', async (req, res) => {
                     }
                     events.push(event);
                 });
-            } catch (innerErr) {}
+            } catch (e) {}
         }
 
         const { error, value } = ics.createEvents(events);
-        if (error) throw error;
-
         res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="ms_ashdod.ics"`);
+        res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"');
         res.send(value);
 
     } catch (err) {
@@ -102,4 +99,4 @@ app.get('/', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Live on port ${PORT}`));
