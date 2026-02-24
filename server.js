@@ -4,17 +4,32 @@ const { parse } = require('node-html-parser');
 const ics = require('ics');
 
 const app = express();
-const ASHDOD_ID = '1198'; // מקובע למ.ס. אשדוד
+const ASHDOD_ID = '1198';
 
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     next();
 });
 
-// שיניתי את הנתיב שיהיה פשוט הכתובת הראשית
+// --- זה החלק החדש שמונע את העומס ---
+
+// 1. נתיב בדיקת דופק - Render יפנה לכאן ולא יפעיל את הסקראפינג היקר
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
+
+// 2. הנתיב הראשי של היומן
 app.get('/', async (req, res) => {
+    const ua = req.headers['user-agent'] || '';
+    
+    // אם מי שפנה הוא בוט של סריקה, נעצור אותו מיד בלי לבזבז משאבים
+    if (ua.includes('bot') || ua.includes('crawler') || ua.includes('Spider')) {
+        console.log(`Bot blocked: ${ua}`);
+        return res.status(200).send('No bots allowed');
+    }
+
+    console.log(`Request received from: ${ua}`);
     const events = [];
-    console.log(`מתחיל סריקה עבור מ.ס. אשדוד (ID: ${ASHDOD_ID})...`);
 
     try {
         for (let round = 1; round <= 36; round++) {
@@ -25,7 +40,6 @@ app.get('/', async (req, res) => {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
                 });
 
-                // התיקון של ה-XML שחייב להישאר כדי שהנתונים יימשכו
                 let htmlData = response.data;
                 const xmlMatch = htmlData.match(/<HtmlData>(.*?)<\/HtmlData>/s);
                 if (xmlMatch) {
@@ -39,7 +53,6 @@ app.get('/', async (req, res) => {
                     const team1 = row.getAttribute('data-team1');
                     const team2 = row.getAttribute('data-team2');
 
-                    // סינון רק לאשדוד
                     if (team1 !== ASHDOD_ID && team2 !== ASHDOD_ID) return; 
 
                     const cols = row.querySelectorAll('.table_col');
@@ -54,12 +67,10 @@ app.get('/', async (req, res) => {
                     const stadium = cols[2].innerText.replace('מגרש', '').trim();
                     const teamNames = cols[1].querySelectorAll('.team-name-text');
                     const title = teamNames.length === 2 ? `${teamNames[0].innerText.trim()} נגד ${teamNames[1].innerText.trim()}` : "משחק ליגה";
-
                     const matchType = (team1 === ASHDOD_ID) ? 'משחק בית' : 'משחק חוץ';
                     
                     let event = {
-                        // UID קבוע הוא קריטי לסנכרון - אל תשנה אותו!
-                        uid: `ashdod-game-round-${round}@football-app.com`, 
+                        uid: `ashdod-game-round-${round}@msa-cal.com`, 
                         title: `🔥 ${title}`,
                         description: `מחזור ${round} | ${matchType} | ליגת העל`,
                         location: stadium,
@@ -73,34 +84,22 @@ app.get('/', async (req, res) => {
                         event.start = [year, month, day];
                         event.title = `🔥 (שעה טרם נקבעה) ${title}`;
                     }
-
                     events.push(event);
                 });
-                
-            } catch (innerErr) {
-                console.log(`בעיה במחזור ${round}`);
-            }
-        }
-
-        if (events.length === 0) {
-            return res.status(404).send("לא נמצאו משחקים.");
+            } catch (innerErr) {}
         }
 
         const { error, value } = ics.createEvents(events);
         if (error) throw error;
 
-        // החזרנו בדיוק את ההדרים שאהבת שעבדו קודם
         res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="ms_ashdod.ics"`);
         res.send(value);
 
     } catch (err) {
-        console.error("שגיאה:", err);
-        res.status(500).send("שגיאה ביצירת היומן.");
+        res.status(500).send("Error");
     }
 });
 
-// הגדרת פורט שמתאימה ל-Render
 const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => console.log(`השרת רץ על פורט ${PORT}`));
+app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
