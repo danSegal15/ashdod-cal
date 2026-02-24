@@ -7,27 +7,31 @@ const app = express();
 const ASHDOD_ID = '1198';
 const SEASON_ID = '27'; 
 
-// הזיכרון שלנו! פה נשמור את היומן אחרי שהוא מוכן
 let cachedIcs = ""; 
 
+// === התיקון נמצא כאן: ניקוי משוריין נגד קידודים כפולים ===
 const clean = (str) => {
     if (!str) return "";
-    return str.replace(/&nbsp;/g, ' ').replace(/\u00a0/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    return str
+        .replace(/&amp;nbsp;/g, ' ')  // קידוד כפול של רווח HTML
+        .replace(/&nbsp;/gi, ' ')     // רווח HTML רגיל (גם באותיות גדולות)
+        .replace(/\u00a0/g, ' ')      // רווח קשיח שקוף ביוניקוד
+        .replace(/&amp;/g, '&')       // תיקון לאמפרסנד
+        .replace(/&quot;/g, '"')      // מרכאות
+        .replace(/&#39;/g, "'")       // גרש
+        .replace(/\s+/g, ' ')         // צמצום כפל רווחים לרווח אחד
+        .trim();
 };
 
-// ==========================================
-// מנוע סריקת הרקע - רץ לבד, לאט ובשקט!
-// ==========================================
 const scrapeDataInBackground = async () => {
     while (true) { 
-        console.log(`>>> מתחיל סריקת רקע איטית (עונה ${SEASON_ID})...`);
+        console.log(`>>> מתחיל סריקת רקע (עונה ${SEASON_ID})...`);
         const events = [];
 
         for (let round = 1; round <= 36; round++) {
             const url = `https://www.football.org.il//Components.asmx/League_AllTables?league_id=40&season_id=${SEASON_ID}&box=0&round_id=${round}`;
             
             try {
-                // ממתינים 5 שניות שלמות בין מחזור למחזור - הדרך הבטוחה לא להיחסם
                 await new Promise(r => setTimeout(r, 5000)); 
                 
                 const response = await axios.get(url, { 
@@ -90,7 +94,6 @@ const scrapeDataInBackground = async () => {
         if (events.length > 0) {
             const { error, value } = ics.createEvents(events);
             if (!error) {
-                // הפתרון לשגיאת הסינטקס: שימוש במערך (Array)
                 const elegantHeaders = [
                     'VERSION:2.0',
                     'X-WR-CALNAME:מ.ס. אשדוד - לוח משחקים 🐬',
@@ -103,17 +106,11 @@ const scrapeDataInBackground = async () => {
             }
         }
 
-        // השרת נח לשעה לפני העדכון הבא
         await new Promise(r => setTimeout(r, 3600000));
     }
 };
 
-// הפעלה אוטומטית בעליית השרת
 scrapeDataInBackground();
-
-// ==========================================
-// נתיבי השרת (מהירים במיוחד)
-// ==========================================
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
@@ -122,10 +119,8 @@ app.get('/', (req, res) => {
     res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"');
     
     if (cachedIcs) {
-        // היומן מוכן בזיכרון - נשלח מיד!
         res.send(cachedIcs);
     } else {
-        // היומן עדיין נסרק בדקות הראשונות אחרי ה-Deploy
         res.send("BEGIN:VCALENDAR\nVERSION:2.0\nX-WR-CALNAME:מ.ס. אשדוד - הנתונים בטעינה (רענן עוד 3 דק)\nEND:VCALENDAR");
     }
 });
