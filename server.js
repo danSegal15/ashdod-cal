@@ -5,30 +5,24 @@ const ics = require('ics');
 
 const app = express();
 const ASHDOD_ID = '1198';
-const SEASON_ID = '27'; 
+const SEASON_ID = '27';
 
-// פונקציית המתנה למניעת חסימות (Rate Limiting)
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// פונקציית ניקוי
+const clean = (str) => str ? str.replace(/&nbsp;/g, ' ').replace(/\u00a0/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim() : "";
 
-// פונקציית ניקוי אגרסיבית לרווחים ותווים שבורים
-const clean = (str) => {
-    if (!str) return "";
-    return str
-        .replace(/&nbsp;/g, ' ')
-        .replace(/\u00a0/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/\s+/g, ' ')
-        .trim();
-};
-
-// 1. נתיב מהיר עבור Render - חובה להגדיר ב-Settings של Render ל- /health
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
+// --- מערכת מעקב: נראה בדיוק מה קורה בשרת ---
+app.use((req, res, next) => {
+    console.log(`[${new Date().toLocaleTimeString()}] בקשה נכנסה לנתיב: ${req.url}`);
+    next();
 });
 
-// 2. נתיב היומן המרכזי
+// נתיב הבריאות (מהיר במיוחד)
+app.get('/health', (req, res) => {
+    res.status(200).send('OK - I am alive');
+});
+
 app.get('/', async (req, res) => {
-    console.log(`--- סריקת אשדוד התחילה (עונה ${SEASON_ID}) ---`);
+    console.log(`>>> מתחיל סריקה מלאה (עונה ${SEASON_ID}) <<<`);
     const events = [];
 
     try {
@@ -36,11 +30,9 @@ app.get('/', async (req, res) => {
             const url = `https://www.football.org.il//Components.asmx/League_AllTables?league_id=40&season_id=${SEASON_ID}&box=0&round_id=${round}`;
             
             try {
-                await sleep(150); // הפסקה קצרה בין בקשות
-                const response = await axios.get(url, { 
-                    headers: { 'User-Agent': 'Mozilla/5.0' },
-                    timeout: 7000 
-                });
+                // השהיה קצרה מאוד כדי לא לעכב את ה-Deploy יותר מדי
+                await new Promise(r => setTimeout(r, 100));
+                const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 5000 });
 
                 let htmlData = response.data;
                 const xmlMatch = htmlData.match(/<HtmlData>(.*?)<\/HtmlData>/is);
@@ -51,69 +43,46 @@ app.get('/', async (req, res) => {
                 const rows = root.querySelectorAll('.table_row');
 
                 rows.forEach(row => {
-                    const rowContent = row.rawText || "";
-                    const t1Id = row.getAttribute('data-team1');
-                    const t2Id = row.getAttribute('data-team2');
-
-                    // חיפוש חזק: לפי ID או לפי השם בטקסט
-                    if (t1Id === ASHDOD_ID || t2Id === ASHDOD_ID || rowContent.includes('אשדוד')) {
+                    const content = row.rawText || "";
+                    if (content.includes('אשדוד') || row.getAttribute('data-team1') === ASHDOD_ID || row.getAttribute('data-team2') === ASHDOD_ID) {
                         const cols = row.querySelectorAll('.table_col');
                         if (cols.length < 4) return;
 
                         const dateStr = clean(row.querySelector('.game-date')?.innerText);
-                        if (!dateStr.includes('/')) return;
-
                         const [day, month, year] = dateStr.split('/').map(Number);
-                        const timeStr = clean(cols[3]?.innerText.replace('שעה', '') || "");
+                        const timeStr = clean(cols[3]?.innerText.replace('שעה', ''));
                         const timeMatch = timeStr.match(/(\d{2}):(\d{2})/);
-                        const stadium = clean(cols[2]?.innerText.replace('מגרש', '') || "טרם נקבע");
                         
                         const teamNames = cols[1]?.querySelectorAll('.team-name-text');
-                        const t1Name = clean(teamNames[0]?.innerText || "אשדוד");
-                        const t2Name = clean(teamNames[1]?.innerText || "יריבה");
+                        const t1 = clean(teamNames[0]?.innerText || "אשדוד");
+                        const t2 = clean(teamNames[1]?.innerText || "יריבה");
 
                         events.push({
-                            uid: `msa-final-r${round}-${day}-${month}@ashdod.com`,
-                            title: `⚽ ${t1Name} - ${t2Name}`,
+                            uid: `msa-${round}-${day}-${month}@ashdod.com`,
+                            title: `⚽ ${t1} - ${t2}`,
                             start: timeMatch ? [year, month, day, parseInt(timeMatch[1]), parseInt(timeMatch[2])] : [year, month, day],
                             duration: timeMatch ? { hours: 2 } : undefined,
                             description: `מחזור ${round} | ליגת העל`,
-                            location: stadium,
+                            location: clean(cols[2]?.innerText.replace('מגרש', ''))
                         });
                     }
                 });
-            } catch (e) {
-                console.log(`שגיאה במחזור ${round}`);
-            }
+            } catch (e) {}
         }
 
-        console.log(`סריקה הושלמה. נמצאו ${events.length} משחקים.`);
-
-        if (events.length === 0) {
-            return res.status(200).send("BEGIN:VCALENDAR\nVERSION:2.0\nX-WR-CALNAME:מ.ס. אשדוד - אין נתונים\nEND:VCALENDAR");
-        }
-
-        const { error, value } = ics.createEvents(events);
-        if (error) throw error;
-
-        // הזרקת המטא-דאטה לאלגנטיות (שם היומן ואזור זמן)
-        const finalIcs = value.replace('VERSION:2.0', 
-            'VERSION:2.0\r\n' +
-            'X-WR-CALNAME:מ.ס. אשדוד - לוח משחקים 🐬\r\n' +
-            'X-WR-TIMEZONE:Asia/Jerusalem\r\n' +
-            'X-WR-CALDESC:לוח משחקים רשמי מסונכרן של מ.ס. אשדוד\r\n' +
-            'REFRESH-INTERVAL;VALUE=DURATION:PT4H'
+        const { value } = ics.createEvents(events);
+        const finalIcs = (value || "").replace('VERSION:2.0', 
+            'VERSION:2.0\r\nX-WR-CALNAME:מ.ס. אשדוד - לוח משחקים 🐬\r\nX-WR-TIMEZONE:Asia/Jerusalem\r\nREFRESH-INTERVAL;VALUE=DURATION:PT4H'
         );
 
         res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-        res.setHeader('Content-Disposition', 'inline; filename="ashdod_games.ics"');
         res.send(finalIcs);
+        console.log(`>>> סריקה הושלמה: נמצאו ${events.length} משחקים <<<`);
 
     } catch (err) {
-        console.error(err);
         res.status(500).send("Error");
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
