@@ -5,23 +5,22 @@ const ics = require('ics');
 
 const app = express();
 const ASHDOD_ID = '1198';
-const SEASON_ID = '27'; 
+const SEASON_ID = '27'; // חוזרים לעונה שעבדה לך
 
-// פונקציית ניקוי אגרסיבית לכל סוגי הרווחים והסימנים
 const clean = (str) => {
     if (!str) return "";
     return str
-        .replace(/&nbsp;/g, ' ')       // ישויות HTML
-        .replace(/\u00a0/g, ' ')       // רווח קשיח ביוניקוד
-        .replace(/&amp;/g, '&')        // אמפרסנד
-        .replace(/\s+/g, ' ')          // צמצום כפל רווחים
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\u00a0/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
         .trim();
 };
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.get('/', async (req, res) => {
-    console.log(`--- סריקה אלגנטית התחילה ---`);
+    console.log(`--- סריקה חסינה ואלגנטית (עונה ${SEASON_ID}) ---`);
     const events = [];
 
     try {
@@ -29,10 +28,9 @@ app.get('/', async (req, res) => {
             const url = `https://www.football.org.il//Components.asmx/League_AllTables?league_id=40&season_id=${SEASON_ID}&box=0&round_id=${round}`;
             
             try {
-                // המתנה קלה כדי למנוע חסימה
-                await new Promise(r => setTimeout(r, 150));
+                await new Promise(r => setTimeout(r, 150)); // המתנה קלה למניעת חסימה
                 const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-
+                
                 let htmlData = response.data;
                 const xmlMatch = htmlData.match(/<HtmlData>(.*?)<\/HtmlData>/is);
                 if (!xmlMatch) continue;
@@ -42,8 +40,12 @@ app.get('/', async (req, res) => {
                 const rows = root.querySelectorAll('.table_row');
 
                 rows.forEach(row => {
-                    const text = row.innerText || "";
-                    if (text.includes('אשדוד') || row.getAttribute('data-team1') === ASHDOD_ID || row.getAttribute('data-team2') === ASHDOD_ID) {
+                    // שימוש ב-rawText במקום ב-innerText - זה המפתח להצלחה!
+                    const rowContent = row.rawText || ""; 
+                    const t1Id = row.getAttribute('data-team1');
+                    const t2Id = row.getAttribute('data-team2');
+
+                    if (rowContent.includes('אשדוד') || t1Id === ASHDOD_ID || t2Id === ASHDOD_ID) {
                         const cols = row.querySelectorAll('.table_col');
                         if (cols.length < 4) return;
 
@@ -55,14 +57,14 @@ app.get('/', async (req, res) => {
                         const timeMatch = timeStr.match(/(\d{2}):(\d{2})/);
                         const stadium = clean(cols[2]?.innerText.replace('מגרש', '') || "טרם נקבע");
                         
-                        // ניקוי יסודי של שמות הקבוצות
+                        // שליפת שמות הקבוצות בצורה נקייה
                         const teamNames = cols[1]?.querySelectorAll('.team-name-text');
                         const t1Name = clean(teamNames[0]?.innerText || "אשדוד");
                         const t2Name = clean(teamNames[1]?.innerText || "יריבה");
 
                         events.push({
-                            uid: `ashdod-v3-${round}-${day}-${month}@msa.com`,
-                            title: `⚽ ${t1Name} - ${t2Name}`, // כותרת נקייה
+                            uid: `msa-v4-r${round}-${day}-${month}@ashdod.com`,
+                            title: `⚽ ${t1Name} - ${t2Name}`,
                             start: timeMatch ? [year, month, day, parseInt(timeMatch[1]), parseInt(timeMatch[2])] : [year, month, day],
                             duration: timeMatch ? { hours: 2 } : undefined,
                             description: `מחזור ${round} | ליגת העל`,
@@ -70,31 +72,37 @@ app.get('/', async (req, res) => {
                         });
                     }
                 });
-            } catch (e) {}
+            } catch (e) {
+                console.log(`שגיאה במחזור ${round}`);
+            }
         }
 
-        const { value } = ics.createEvents(events);
-        
-        // --- הזרקה של השם וההגדרות בצורה שגוגל לא יוכל להתעלם ---
-        const elegantValue = value
-            .replace(/PRODID:.*?\r\n/g, 'PRODID:M.S. Ashdod Calendar\r\n')
-            .replace('VERSION:2.0', 
-                'VERSION:2.0\r\n' +
-                'X-WR-CALNAME:מ.ס. אשדוד - לוח משחקים 🐬\r\n' +
-                'X-WR-TIMEZONE:Asia/Jerusalem\r\n' +
-                'X-WR-CALDESC:לוח משחקים רשמי\r\n' +
-                'REFRESH-INTERVAL;VALUE=DURATION:PT4H\r\n' +
-                'METHOD:PUBLISH'
-            );
+        console.log(`נמצאו ${events.length} משחקים.`);
+
+        if (events.length === 0) {
+            return res.status(200).send("BEGIN:VCALENDAR\nVERSION:2.0\nX-WR-CALNAME:מ.ס. אשדוד - אין נתונים\nEND:VCALENDAR");
+        }
+
+        const { error, value } = ics.createEvents(events);
+        if (error) throw error;
+
+        // הזרקת המטא-דאטה לשם האלגנטי
+        const elegantValue = value.replace('VERSION:2.0', 
+            'VERSION:2.0\r\n' +
+            'X-WR-CALNAME:מ.ס. אשדוד - לוח משחקים 🐬\r\n' +
+            'X-WR-TIMEZONE:Asia/Jerusalem\r\n' +
+            'X-WR-CALDESC:לוח משחקים רשמי מסונכרן\r\n' +
+            'REFRESH-INTERVAL;VALUE=DURATION:PT4H'
+        );
 
         res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-        res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"');
         res.send(elegantValue);
 
     } catch (err) {
+        console.error(err);
         res.status(500).send("Error");
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server live on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
