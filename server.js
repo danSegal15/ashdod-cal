@@ -112,16 +112,20 @@ const scrapeDataInBackground = async () => {
 
 scrapeDataInBackground();
 
+// ... (כל הקוד העליון ומנוע הסריקה נשארים אותו דבר בדיוק)
+
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.get('/', (req, res) => {
-    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-    res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"');
-    
     if (cachedIcs) {
+        // היומן מוכן בזיכרון - נשלח מיד!
+        res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+        res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"');
         res.send(cachedIcs);
     } else {
-        res.send("BEGIN:VCALENDAR\nVERSION:2.0\nX-WR-CALNAME:מ.ס. אשדוד - הנתונים בטעינה (רענן עוד 3 דק)\nEND:VCALENDAR");
+        // השינוי הקריטי: מחזירים סטטוס 503 במקום יומן ריק!
+        // ככה גוגל יודע שהשרת לא מוכן ולא מוחק לאף אחד את היומן הקיים
+        res.status(503).send("Server is waking up and scraping data. Please try again in a few minutes.");
     }
 });
 
