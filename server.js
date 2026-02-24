@@ -60,7 +60,7 @@ app.get('/', async (req, res) => {
                     let event = {
                         // UID קבוע הוא קריטי לסנכרון - אל תשנה אותו!
                         uid: `ashdod-game-round-${round}@football-app.com`, 
-                        title: `⚽ ${title}`,
+                        title: `🔥 ${title}`,
                         description: `מחזור ${round} | ${matchType} | ליגת העל`,
                         location: stadium,
                         status: 'CONFIRMED'
@@ -71,7 +71,7 @@ app.get('/', async (req, res) => {
                         event.duration = { hours: 2 };
                     } else {
                         event.start = [year, month, day];
-                        event.title = `⚽ (שעה טרם נקבעה) ${title}`;
+                        event.title = `🔥 (שעה טרם נקבעה) ${title}`;
                     }
 
                     events.push(event);
@@ -102,4 +102,5 @@ app.get('/', async (req, res) => {
 
 // הגדרת פורט שמתאימה ל-Render
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => console.log(`השרת רץ על פורט ${PORT}`));
