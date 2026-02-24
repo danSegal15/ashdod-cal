@@ -69,7 +69,7 @@ const scrapeDataInBackground = async () => {
                         
                         let event = {
                             uid: `msa-s27-r${round}@ashdod.com`, 
-                            title: `🔥 ${t1Name} - ${t2Name}`,
+                            title: `⚽ ${t1Name} - ${t2Name}`,
                             description: `מחזור ${round} | ליגת העל`,
                             location: stadium,
                         };
