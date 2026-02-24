@@ -124,7 +124,7 @@ app.get('/calendar.ics', (req, res) => {
     }
 });
 
-// --- נתיב 3: דף הנחיתה (הפנים של האפליקציה) ---
+// --- נתיב 3: דף הנחיתה (עם הלוגו האמיתי) ---
 app.get('/', (req, res) => {
     const html = `
     <!DOCTYPE html>
@@ -145,7 +145,8 @@ app.get('/', (req, res) => {
                 box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
                 text-align: center; max-width: 400px; width: 85%; 
             }
-            .logo { font-size: 55px; margin-bottom: 15px; }
+            /* עדכון CSS ללוגו תמונה */
+            .logo { width: 120px; height: auto; margin-bottom: 20px; }
             h1 { color: #d32f2f; margin-bottom: 5px; font-size: 28px; } /* אדום אשדוד */
             h2 { color: #333; margin-top: 0; font-size: 20px; font-weight: normal; margin-bottom: 25px;}
             p { color: #666; margin-bottom: 30px; line-height: 1.6; font-size: 15px; }
@@ -158,8 +159,6 @@ app.get('/', (req, res) => {
             .btn-apple:hover { background-color: #333; transform: translateY(-2px); }
             .btn-google { background-color: #fff; color: #4285F4; border: 2px solid #4285F4; }
             .btn-google:hover { background-color: #e8f0fe; transform: translateY(-2px); }
-            .btn-direct { background-color: #ffc107; color: #000; } /* צהוב אשדוד */
-            .btn-direct:hover { background-color: #e0a800; transform: translateY(-2px); }
             .status { 
                 margin-top: 25px; padding: 10px; border-radius: 8px; font-size: 13px; font-weight: bold;
                 ${cachedIcs ? 'background-color: #e8f5e9; color: #2e7d32;' : 'background-color: #fff3e0; color: #ef6c00;'}
@@ -169,13 +168,13 @@ app.get('/', (req, res) => {
     </head>
     <body>
         <div class="container">
-            <div class="logo">🐬⚽</div>
+            <img src="https://www.fcashdod.co.il/wp-content/uploads/2023/08/cropped-fc-ashdod.png" alt="לוגו מ.ס. אשדוד" class="logo">
             <h1>מ.ס. אשדוד</h1>
             <h2>לוח משחקים מתעדכן</h2>
-            <p>הוסף את משחקי הקבוצה ישירות ליומן האישי שלך. מתעדכן אוטומטית בהתאם לפרסומי המנהלת</p>
-            
-            <a href="webcal://ashdod-cal.onrender.com/calendar.ics" class="btn btn-apple">🍏 הוסף לאייפון (Apple)</a>
-            <a href="https://www.google.com/calendar/render?cid=http://ashdod-cal.onrender.com/calendar.ics" target="_blank" class="btn btn-google">🤖  הוסף לאנדרואיד (Android)</a>
+            <p>הוסף את משחקי הקבוצה ישירות ליומן האישי שלך. מתעדכן אוטומטית ברקע מהאתר הרשמי.</p>
+			
+            <a href="https://www.google.com/calendar/render?cid=http://ashdod-cal.onrender.com/calendar.ics" target="_blank" class="btn btn-google">📅 הוסף ליומן גוגל (Google Calendar)</a>            
+            <a href="webcal://ashdod-cal.onrender.com/calendar.ics" class="btn btn-apple">🍏 הוסף ליומן אפל (Apple Calendar)</a>
             
             <div class="status">
                 ${cachedIcs ? '✅ הנתונים מעודכנים ומוכנים' : '⏳ השרת סורק כעת נתונים... רענן בעוד דקה'}
